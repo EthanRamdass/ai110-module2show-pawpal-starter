@@ -6,20 +6,28 @@
 
 - Briefly describe your initial UML design.
 
-Pet tracker, Constraints, Daily Plan
+My initial design focused on a simple pet-care scheduling system with three core ideas: managing pet profiles, representing care tasks, and producing a daily plan from those tasks under a set of scheduling constraints.
 
 - What classes did you include, and what responsibilities did you assign to each?
 
-Pet Class (name, age, meds), Owner (pet registered), Tasks(walks, feeding, scheduling priority. grooming frequency), Daily Plan Class (Inherits from Tasks to genrate a time/task/duration/priority)
+I included the following classes:
+
+- Owner: represents the person managing the pet-care routine and keeps track of the pets they are responsible for.
+- Pet: represents an individual animal and holds basic information such as name, species, age, and needs, along with the tasks associated with that pet.
+- Task: represents one care activity, such as feeding, walking, or grooming, and stores attributes like duration, priority, and preferred time.
+- Constraint: captures scheduling limits such as available daily minutes, preferred time windows, and times to avoid.
+- ScheduledTask: represents a task once it has been placed into a daily schedule, including its start time, end time, and completion status.
+- DailyPlan: acts as the container for the final plan for a day and tracks the scheduled tasks and total planned duration.
+- Scheduler: is responsible for choosing which tasks to include and arranging them into a daily plan based on priority and constraints.
 
 **b. Design changes**
 
 - Did your design change during implementation?
 - If yes, describe at least one change and why you made it.
 
-A strong critique of the initial design is that it named the right domain ideas, but it was still too abstract to guide implementation. The biggest issue is that the Daily Plan should not inherit from Task; a plan is a container for scheduled activities, not a type of task. The design also needs explicit support for scheduling behavior, such as time constraints, priorities, and task ordering. In practice, I would improve the model by introducing a Scheduler class, a Constraint class, and a ScheduledTask class so the system can represent both the task list and the generated plan clearly.
+I reviewed the skeleton in pawpal_system.py and the main feedback was that the first design was too abstract for implementation because it did not clearly show how tasks become an actual schedule. The biggest change was making the scheduling flow more explicit.
 
-The main design change I would make is to shift from a simple inheritance-based model to a composition-based one. An Owner has Pets, a Pet has Tasks, a Scheduler creates a DailyPlan from those pieces, and the DailyPlan contains ScheduledTask objects that reference the original tasks.
+I adjusted the design so that the relationships are composition-based rather than inheritance-based: an Owner has Pets, a Pet has Tasks, and a Scheduler uses those tasks plus constraints to build a DailyPlan. I also introduced ScheduledTask as a separate class so the system could distinguish between a general care task and a task that has been placed into a specific time slot. This change made the logic easier to follow and reduced the risk of bottlenecks caused by trying to handle both task definition and scheduling inside one object.
 
 ---
 
@@ -34,6 +42,8 @@ The main design change I would make is to shift from a simple inheritance-based 
 
 - Describe one tradeoff your scheduler makes.
 - Why is that tradeoff reasonable for this scenario?
+
+One tradeoff the scheduler makes is that it currently warns about tasks that share the exact same scheduled time, but it does not attempt a full overlap analysis for tasks that start at different times and run past each other. This keeps the conflict logic lightweight and easy to explain, which is reasonable for a small pet-care planner where the main goal is to catch obvious scheduling clashes rather than model every possible time-window edge case.
 
 ---
 

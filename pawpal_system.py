@@ -1,8 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from typing import List
+
+
+def _parse_time_to_minutes(value: str) -> int:
+    """Convert a HH:MM string into minutes since midnight."""
+    try:
+        hours_text, minute_text = value.split(":")
+        hours = int(hours_text)
+        minutes = int(minute_text)
+        return hours * 60 + minutes
+    except ValueError:
+        return 8 * 60
 
 
 @dataclass
@@ -14,13 +25,16 @@ class Task:
     priority: int = 1
     scheduled_time: str = "08:00"
     frequency: str = "daily"
+    due_date: date | None = None
     completed: bool = False
     category: str = "general"
 
     def __post_init__(self) -> None:
-        """Ensure each task has a usable description."""
+        """Ensure each task has a usable description and a due date."""
         if not self.description:
             self.description = "General task"
+        if self.due_date is None:
+            self.due_date = date.today()
 
     @property
     def title(self) -> str:
@@ -88,6 +102,30 @@ class Pet:
     def get_pending_tasks(self) -> List[Task]:
         """Return the tasks that are still incomplete."""
         return [task for task in self.tasks if not task.completed]
+
+    def complete_task(self, task: Task) -> Task | None:
+        """Mark a task complete and create a next occurrence for recurring items with a simple date-based cadence."""
+        if task not in self.tasks:
+            return None
+
+        task.mark_completed()
+
+        if not task.is_recurring:
+            return None
+
+        interval_days = 1 if task.frequency.lower() == "daily" else 7
+        next_due_date = (task.due_date or date.today()) + timedelta(days=interval_days)
+        next_task = Task(
+            description=task.description,
+            duration_minutes=task.duration_minutes,
+            priority=task.priority,
+            scheduled_time=task.scheduled_time,
+            frequency=task.frequency,
+            due_date=next_due_date,
+            category=task.category,
+        )
+        self.tasks.append(next_task)
+        return next_task
 
 
 @dataclass
@@ -212,27 +250,91 @@ class Scheduler:
         plan.explanation = "A priority-based plan was generated from the available pet-care tasks."
         return plan
 
-    def get_available_tasks(self) -> List[Task]:
-        """Return the tasks available to the scheduler."""
-        if self.owner is not None:
-            return self.owner.get_all_tasks()
-        if self.pet is not None:
-            return self.pet.get_tasks_for_day()
-        return list(self.tasks)
+    def get_conflict_warnings(self) -> List[str]:
+        """Return lightweight warnings for tasks that share the same scheduled time without interrupting the plan."""
+        warnings: List[str] = []
+        tasks = self.get_available_tasks(include_completed=False)
 
-    def sort_tasks_by_priority(self) -> List[Task]:
-        """Sort tasks so the highest-priority items are scheduled first."""
+        seen: List[tuple[str, str]] = []
+        for task in tasks:
+            key = (task.scheduled_time, task.description)
+            if key in seen:
+                continue
+            seen.append(key)
+
+        for index, first_task in enumerate(tasks):
+            for second_task in tasks[index + 1 :]:
+                if first_task.scheduled_time != second_task.scheduled_time:
+                    continue
+                message = (
+                    f"Warning: '{first_task.description}' and '{second_task.description}' "
+                    f"are both scheduled for {first_task.scheduled_time}."
+                )
+                if message not in warnings:
+                    warnings.append(message)
+
+        return warnings
+
+    def get_available_tasks(
+        self,
+        pet_name: str | None = None,
+        include_completed: bool = False,
+    ) -> List[Task]:
+        """Return the tasks available to the scheduler, optionally filtered by pet and completion status."""
+        if self.owner is not None:
+            tasks = []
+            for pet in self.owner.pets:
+                if pet_name and pet.name.lower() != pet_name.lower():
+                    continue
+                tasks.extend(pet.get_tasks_for_day())
+            return [task for task in tasks if include_completed or not task.completed]
+        if self.pet is not None:
+            tasks = self.pet.get_tasks_for_day()
+            return [task for task in tasks if include_completed or not task.completed]
+        return [task for task in self.tasks if include_completed or not task.completed]
+
+    def sort_by_time(self, tasks: List[Task] | None = None) -> List[Task]:
+        """Return tasks sorted by their scheduled time in HH:MM format."""
+        task_list = tasks if tasks is not None else self.get_available_tasks()
+        return sorted(task_list, key=lambda task: _parse_time_to_minutes(task.scheduled_time))
+
+    def sort_tasks_by_priority(self, pet_name: str | None = None, include_completed: bool = False) -> List[Task]:
+        """Sort tasks so the highest-priority items are scheduled first, using time when available."""
         return sorted(
-            self.get_available_tasks(),
-            key=lambda task: (-task.get_priority_score(), task.duration_minutes, task.scheduled_time),
+            self.get_available_tasks(pet_name=pet_name, include_completed=include_completed),
+            key=lambda task: (
+                _parse_time_to_minutes(task.scheduled_time),
+                -task.get_priority_score(),
+                task.duration_minutes,
+            ),
         )
 
-    def choose_tasks(self) -> List[Task]:
+    def filter_tasks(self, tasks: List[Task], pet_name: str | None = None, include_completed: bool = False) -> List[Task]:
+        """Filter tasks by pet name and completion status."""
+        filtered_tasks: List[Task] = []
+        for task in tasks:
+            if pet_name and not self._task_belongs_to_pet(task, pet_name):
+                continue
+            if not include_completed and task.completed:
+                continue
+            filtered_tasks.append(task)
+        return filtered_tasks
+
+    def _task_belongs_to_pet(self, task: Task, pet_name: str) -> bool:
+        """Check whether a task belongs to a pet with the given name."""
+        if self.owner is None:
+            return True
+        for pet in self.owner.pets:
+            if pet.name.lower() == pet_name.lower() and task in pet.tasks:
+                return True
+        return False
+
+    def choose_tasks(self, pet_name: str | None = None, include_completed: bool = False) -> List[Task]:
         """Select the tasks that fit within the daily scheduling limits."""
         selected: List[Task] = []
         remaining_minutes = self.constraints.available_minutes
 
-        for task in self.sort_tasks_by_priority():
+        for task in self.sort_tasks_by_priority(pet_name=pet_name, include_completed=include_completed):
             if len(selected) >= self.constraints.max_tasks_per_day:
                 break
             if task.duration_minutes <= remaining_minutes and self.constraints.can_fit(task):
@@ -241,14 +343,23 @@ class Scheduler:
 
         return selected
 
-    def generate_schedule(self) -> List[ScheduledTask]:
-        """Turn the selected tasks into a time-based schedule."""
+    def generate_schedule(self, pet_name: str | None = None, include_completed: bool = False) -> List[ScheduledTask]:
+        """Turn the selected tasks into a time-based schedule while avoiding overlaps."""
         schedule: List[ScheduledTask] = []
         current_minutes = 8 * 60
 
-        for task in self.choose_tasks():
-            start_time = self._format_minutes(current_minutes)
-            end_minutes = current_minutes + task.duration_minutes
+        for task in self.choose_tasks(pet_name=pet_name, include_completed=include_completed):
+            preferred_start = _parse_time_to_minutes(task.scheduled_time)
+            task_start = max(current_minutes, preferred_start)
+
+            if schedule and preferred_start < self._get_schedule_end(schedule[-1]):
+                continue
+
+            if self._conflicts_with_schedule(schedule, task_start, task.duration_minutes):
+                continue
+
+            start_time = self._format_minutes(task_start)
+            end_minutes = task_start + task.duration_minutes
             end_time = self._format_minutes(end_minutes)
             schedule.append(
                 ScheduledTask(
@@ -258,7 +369,7 @@ class Scheduler:
                     reason="Selected based on priority and available time.",
                 )
             )
-            current_minutes = end_minutes
+            current_minutes = max(current_minutes, end_minutes)
 
         return schedule
 
@@ -266,3 +377,19 @@ class Scheduler:
         """Convert minute values into HH:MM strings."""
         hours, mins = divmod(minutes, 60)
         return f"{hours:02d}:{mins:02d}"
+
+    def _get_schedule_end(self, scheduled_task: ScheduledTask) -> int:
+        """Return the end time of a scheduled task in minutes."""
+        return _parse_time_to_minutes(scheduled_task.end_time)
+
+    def _conflicts_with_schedule(self, schedule: List[ScheduledTask], start_minutes: int, duration_minutes: int) -> bool:
+        """Return True when a task overlaps with an already scheduled item."""
+        end_minutes = start_minutes + duration_minutes
+        for scheduled_task in schedule:
+            scheduled_start = _parse_time_to_minutes(scheduled_task.start_time)
+            scheduled_end = _parse_time_to_minutes(scheduled_task.end_time)
+            if start_minutes < scheduled_end and end_minutes > scheduled_start:
+                return True
+            if scheduled_start <= start_minutes < scheduled_end:
+                return True
+        return False

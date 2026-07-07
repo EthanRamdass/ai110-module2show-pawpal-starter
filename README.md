@@ -73,14 +73,14 @@ Sample test output:
 
 ## 📐 Smarter Scheduling
 
-> Fill in once you've implemented scheduling logic.
+PawPal+ now includes a lightweight scheduling layer that helps the app choose, order, and review pet-care tasks without overcomplicating the logic.
 
 | Feature | Method(s) | Notes |
 |---------|-----------|-------|
-| Task sorting | | e.g., by priority, duration |
-| Filtering | | e.g., skip tasks if time runs out |
-| Conflict handling | | e.g., overlapping time slots |
-| Recurring tasks | | e.g., daily vs. weekly |
+| Sorting behavior | `Scheduler.sort_by_time()` | Orders pending tasks by their preferred clock time so the plan reads naturally from morning to evening. |
+| Filtering behavior | `Scheduler.filter_tasks()` and `Scheduler.get_available_tasks()` | Lets the scheduler focus on a specific pet or exclude completed tasks before planning. |
+| Conflict detection logic | `Scheduler.get_conflict_warnings()` | Detects tasks that share the same scheduled time and reports a warning instead of crashing. |
+| Recurring task logic | `Pet.complete_task()` | Marks a recurring task complete and creates the next occurrence for daily or weekly care items. |
 
 ## 📸 Demo Walkthrough
 
