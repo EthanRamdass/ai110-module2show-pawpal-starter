@@ -1,15 +1,80 @@
 classDiagram
-    %% Replace the placeholders below with your actual classes, attributes, methods, and relationships.
-    %% Keep this file updated so it matches your final implementation.
-
-    class ClassName {
-        +type attribute
-        +method() returnType
+    class Owner {
+        +name: str
+        +preferences: list[str]
+        +pets: list[Pet]
+        +add_pet(pet: Pet)
+        +remove_pet(pet: Pet)
+        +get_pet_names() list[str]
     }
 
-    class AnotherClass {
-        +type attribute
-        +method() returnType
+    class Pet {
+        +name: str
+        +species: str
+        +age: int
+        +needs: list[str]
+        +tasks: list[Task]
+        +add_task(task: Task)
+        +remove_task(task: Task)
+        +get_tasks_for_day() list[Task]
     }
 
-    ClassName --> AnotherClass : relationship
+    class Task {
+        +title: str
+        +category: str
+        +duration_minutes: int
+        +priority: int
+        +preferred_time: str
+        +is_recurring: bool
+        +update_details(title: str, duration: int, priority: int)
+        +get_priority_score() int
+        +is_urgent() bool
+    }
+
+    class Constraint {
+        +available_minutes: int
+        +preferred_window: str
+        +avoid_times: list[str]
+        +max_tasks_per_day: int
+        +can_fit(task: Task) bool
+        +is_time_available(time: str) bool
+        +matches_owner_preferences(owner: Owner) bool
+    }
+
+    class ScheduledTask {
+        +task: Task
+        +start_time: str
+        +end_time: str
+        +reason: str
+        +mark_completed()
+        +get_duration() int
+    }
+
+    class DailyPlan {
+        +date: date
+        +scheduled_tasks: list[ScheduledTask]
+        +total_duration: int
+        +explanation: str
+        +add_scheduled_task(task: ScheduledTask)
+        +explain_plan() str
+        +get_summary() str
+    }
+
+    class Scheduler {
+        +pet: Pet
+        +tasks: list[Task]
+        +constraints: Constraint
+        +build_plan() DailyPlan
+        +sort_tasks_by_priority() list[Task]
+        +choose_tasks() list[Task]
+        +generate_schedule() list[ScheduledTask]
+    }
+
+    Owner "1" --> "*" Pet : owns
+    Pet "1" --> "*" Task : has
+    Pet "1" --> "1" Constraint : uses
+    Task "1" --> "*" ScheduledTask : becomes
+    DailyPlan "1" --> "*" ScheduledTask : contains
+    Scheduler --> DailyPlan : creates
+    Scheduler --> Task : evaluates
+    Scheduler --> Constraint : considers
